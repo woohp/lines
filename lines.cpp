@@ -300,10 +300,18 @@ std::vector<int> getLines(const std::string& filename)
 
     int minX = 99999;
     int minY = 99999;
+    int maxX = 0;
+    int maxY = 0;
     for (int i = 0; i < horizontalLines.size(); ++i)
+    {
         minX = std::min(minX, horizontalLines[i].x1);
+        maxX = std::max(maxX, horizontalLines[i].x2);
+    }
     for (int i = 0; i < verticalLines.size(); ++i)
-        minY = std::min(minY, verticalLines[i].x1);
+    {
+        minY = std::min(minY, verticalLines[i].y1);
+        maxY = std::max(maxY, verticalLines[i].y2);
+    }
 
     for (int i = 0; i < horizontalLines.size(); ++i)
     {
@@ -326,8 +334,26 @@ std::vector<int> getLines(const std::string& filename)
     // draw the lines to empty canvases
     cv::Mat canvas1 = cv::Mat::zeros(rows, cols, CV_8UC1);
     cv::Mat canvas2 = cv::Mat::zeros(rows, cols, CV_8UC1);
-    drawLines(canvas1, horizontalLines);
-    drawLines(canvas2, verticalLines);
+    cv::Scalar color(255, 255, 255);
+    for (int i = 0; i < horizontalLines.size(); ++i)
+    {
+        const Line& line = horizontalLines[i];
+        if (line.y2 <= maxY)
+            cv::line(canvas1,
+                     cv::Point(line.x1, line.y1),
+                     cv::Point(line.x2, line.y2),
+                     color);
+    }
+
+    for (int i = 0; i < verticalLines.size(); ++i)
+    {
+        const Line& line = verticalLines[i];
+        if (line.x2 <= maxX)
+            cv::line(canvas1,
+                     cv::Point(line.x1, line.y1),
+                     cv::Point(line.x2, line.y2),
+                     color);
+    }
 
 //    groupLines(canvas1, actualLines, true);
 //    groupLines(canvas2, actualLines, false);

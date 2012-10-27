@@ -7,8 +7,9 @@ from sklearn.cluster import DBSCAN
 
 
 def main(args):
-    srcFolder = "/Users/huipeng/EO990RW8/"
-    linesFile = open("/Users/huipeng/EO990RW8/lines_extract.txt", 'r')
+    linesFile = sys.stdin
+    if len(args) > 1:
+        linesFile = open(args[1], 'r')
 
     allFeatures = []
     allFilenames = []
@@ -25,26 +26,31 @@ def main(args):
     print 'finished reading all filenames. clustering...'
 
 
-    dbscan = DBSCAN(eps=1100, min_samples=2, random_state=np.random.RandomState(0))
+    dbscan = DBSCAN(eps=800, min_samples=2, random_state=np.random.RandomState(0))
     dbscan.fit(np.atleast_2d(allFeatures))
     print 'num clusters', len(set(dbscan.labels_))
 
 
     shutil.rmtree('/Users/huipeng/groups/')
     os.mkdir('/Users/huipeng/groups/')
+    os.mkdir('/Users/huipeng/groups/templates/')
     for label, filename in zip(dbscan.labels_, allFilenames):
         label = str(int(label))
 
         groupFolder = os.path.join('/Users/huipeng/groups/', label)
-        if not os.path.isdir(groupFolder):
+        isFirstInstance = not os.path.isdir(groupFolder)
+        if isFirstInstance:
             os.mkdir(groupFolder)
 
-        originalImage = cv2.imread(os.path.join(srcFolder, filename), 0)
+        originalImage = cv2.imread(os.path.join("/Users/huipeng/EO990RW8/", filename), 0)
         height, width = originalImage.shape
         resizedImage = cv2.resize(originalImage, (width/4, height/4))
 
         newFilename = os.path.join(groupFolder, filename + '.png')
         cv2.imwrite(newFilename, resizedImage)
+        if isFirstInstance and label != -1:
+            newFilename = os.path.join('/Users/huipeng/groups/templates/', filename + '.png')
+            cv2.imwrite(newFilename, resizedImage)
 
     print 'finished'
 
