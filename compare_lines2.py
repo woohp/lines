@@ -30,14 +30,17 @@ def main(args):
     dbscan.fit(np.atleast_2d(allFeatures))
     print 'num clusters', len(set(dbscan.labels_))
 
+    homeDir = os.path.expanduser('~')
+    groupsDir = os.path.join(homeDir, 'groups')
+    templatesDir = os.path.join(groupsDir, 'templates')
 
-    shutil.rmtree('/Users/huipeng/groups/')
-    os.mkdir('/Users/huipeng/groups/')
-    os.mkdir('/Users/huipeng/groups/templates/')
+    shutil.rmtree(groupsDir)
+    os.mkdir(groupsDir)
+    os.mkdir(templatesDir)
     for label, filename in zip(dbscan.labels_, allFilenames):
         label = str(int(label))
 
-        groupFolder = os.path.join('/Users/huipeng/groups/', label)
+        groupFolder = os.path.join(groupsDir, label)
         isFirstInstance = not os.path.isdir(groupFolder)
         if isFirstInstance:
             os.mkdir(groupFolder)
@@ -49,7 +52,7 @@ def main(args):
         newFilename = os.path.join(groupFolder, filename + '.png')
         cv2.imwrite(newFilename, resizedImage)
         if isFirstInstance and label != '-1':
-            newFilename = os.path.join('/Users/huipeng/groups/templates/', label + '_' + filename + '.png')
+            newFilename = os.path.join(templatesDir, label + '_' + filename + '.png')
             cv2.imwrite(newFilename, resizedImage)
 
     print 'finished'
