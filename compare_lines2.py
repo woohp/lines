@@ -26,7 +26,7 @@ def main(args):
     print 'finished reading all filenames. clustering...'
 
 
-    dbscan = DBSCAN(eps=800, min_samples=2, random_state=np.random.RandomState(0))
+    dbscan = DBSCAN(eps=1100, min_samples=2, random_state=np.random.RandomState(0))
     dbscan.fit(np.atleast_2d(allFeatures))
     print 'num clusters', len(set(dbscan.labels_))
 
@@ -48,8 +48,8 @@ def main(args):
 
         newFilename = os.path.join(groupFolder, filename + '.png')
         cv2.imwrite(newFilename, resizedImage)
-        if isFirstInstance and label != -1:
-            newFilename = os.path.join('/Users/huipeng/groups/templates/', filename + '.png')
+        if isFirstInstance and label != '-1':
+            newFilename = os.path.join('/Users/huipeng/groups/templates/', label + '_' + filename + '.png')
             cv2.imwrite(newFilename, resizedImage)
 
     print 'finished'
