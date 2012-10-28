@@ -7,7 +7,6 @@
 #include <stdexcept>
 
 #include <opencv2/opencv.hpp>
-#include <boost/chrono/chrono_io.hpp>
 
 #define WIDTH 2880
 #define HEIGHT 3520
@@ -90,14 +89,9 @@ void getFeatures(const std::string& filename, std::vector<int>& features)
     int size = rows * cols;
     int minLineLength = std::min(rows, cols) * 0.035;
 
-    boost::chrono::high_resolution_clock::time_point t0;
-    boost::chrono::high_resolution_clock::time_point t1;
-
     // invert image
-    t0 = boost::chrono::high_resolution_clock::now();
     for (int i = 0; i < size; ++i)
         img.data[i] ^= 255;
-    std::cout << "1:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
     int minX = 99999;
     int minY = 99999;
@@ -105,7 +99,6 @@ void getFeatures(const std::string& filename, std::vector<int>& features)
     int maxY = 0;
 
     // find all the horizontal lines
-    t0 = boost::chrono::high_resolution_clock::now();
     std::vector<Line> horizontalLines;
     for (int y = 100; y < rows-100; ++y)
     {
@@ -141,10 +134,8 @@ void getFeatures(const std::string& filename, std::vector<int>& features)
             maxX = cols-100;
         }
     }
-    std::cout << "2:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
     // find all the vertical lines
-    t0 = boost::chrono::high_resolution_clock::now();
     std::vector<Line> verticalLines;
     std::vector<uint8_t> isLines(cols);
     std::vector<int> starts(cols);
@@ -183,9 +174,7 @@ void getFeatures(const std::string& filename, std::vector<int>& features)
             maxY = rows-100;
         }
     }
-    std::cout << "3:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
-    t0 = boost::chrono::high_resolution_clock::now();
     for (int i = 0; i < horizontalLines.size(); ++i)
     {
         horizontalLines[i].x1 -= minX;
@@ -200,12 +189,10 @@ void getFeatures(const std::string& filename, std::vector<int>& features)
         verticalLines[i].y1 -= minY;
         verticalLines[i].y2 -= minY;
     }
-    std::cout << "4:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
     std::vector<Line> actualLines;
 
     // draw the lines to empty canvases
-    t0 = boost::chrono::high_resolution_clock::now();
     Image canvas1 = Image::zeros(rows, cols);
     Image canvas2 = Image::zeros(rows, cols);
     cv::Scalar color(255, 255, 255);
@@ -223,22 +210,19 @@ void getFeatures(const std::string& filename, std::vector<int>& features)
     {
         const Line& line = verticalLines[i];
         if (line.x2 <= maxX)
-            cv::line(canvas1,
+            cv::line(canvas2,
                      cv::Point(line.x1, line.y1),
                      cv::Point(line.x2, line.y2),
                      color);
     }
-    std::cout << "5:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
-    t0 = boost::chrono::high_resolution_clock::now();
     calculateDescriptor(canvas1, canvas2, features);
-    std::cout << "6:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
 
 //    getchar();
 
 //    cv::namedWindow("foo");
-//    cv::imshow("foo", canvas2);
+//    cv::imshow("foo", canvas1);
 //    cv::waitKey();
 }
 
