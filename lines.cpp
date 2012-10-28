@@ -79,82 +79,6 @@ void calculateDescriptor(Image& mat1, Image& mat2, std::vector<int>& results)
 }
 
 
-Image dilateVertical(Image& mat, uint8_t val = 255)
-{
-    int rows = mat.rows;
-    int cols = mat.cols;
-    Image result = Image::zeros(rows, cols);
-
-
-    for (int x = 0; x < cols; ++x)
-    {
-        if (mat(0, x))
-        {
-            result(0, x) = val;
-            result(1, x) = val;
-        }
-        if (mat(rows-1, x))
-        {
-            result(rows-1, x) = val;
-            result(rows-2, x) = val;
-        }
-    }
-
-    for (int y = 1; y < rows - 1; ++y)
-    {
-        uint8_t *srcRowPtr = mat[y];
-        uint8_t *destRowPtr = result[y];
-        uint8_t *destPrevRowPtr = result[y-1];
-        uint8_t *destNextRowPtr = result[y+1];
-        for (int x = 0; x < cols; ++x)
-        {
-            if (srcRowPtr[x])
-            {
-                destPrevRowPtr[x] = val;
-                destRowPtr[x] = val;
-                destNextRowPtr[x] = val;
-            }
-        }
-    }
-
-    return result;
-}
-
-Image dilateHorizontal(Image& mat, uint8_t val = 255)
-{
-    int rows = mat.rows;
-    int cols = mat.cols;
-    Image result = Image::zeros(rows, cols);
-
-    for (int y = 0; y < rows; ++y)
-    {
-        uint8_t *srcRowPtr = mat[y];
-        uint8_t *destRowPtr = result[y];
-        if (srcRowPtr[0])
-        {
-            destRowPtr[0] = val;
-            destRowPtr[1] = val;
-        }
-        for (int x = 1; x < cols - 1; ++x)
-        {
-            if (srcRowPtr[x])
-            {
-                destRowPtr[x-1] = val;
-                destRowPtr[x] = val;
-                destRowPtr[x+1] = val;
-            }
-        }
-        if (srcRowPtr[cols-1])
-        {
-            destRowPtr[cols-1] = val;
-            destRowPtr[cols-2] = val;
-        }
-    }
-
-    return result;
-}
-
-
 void getFeatures(const std::string& filename, std::vector<int>& features)
 {
     Image img = cv::imread(filename.c_str(), 0);
@@ -175,86 +99,93 @@ void getFeatures(const std::string& filename, std::vector<int>& features)
         img.data[i] ^= 255;
     std::cout << "1:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
+    int minX = 99999;
+    int minY = 99999;
+    int maxX = 0;
+    int maxY = 0;
+
     // find all the horizontal lines
     t0 = boost::chrono::high_resolution_clock::now();
     std::vector<Line> horizontalLines;
-    Image dilatedImg = dilateVertical(img);
     for (int y = 100; y < rows-100; ++y)
     {
-        const uint8_t *rowPtr = dilatedImg[y];
+        const uint8_t *prevRowPtr = img[y-1];
+        const uint8_t *rowPtr = img[y];
+        const uint8_t *nextRowPtr = img[y+1];
 
         int start = 0;
         bool isLine = false;
         for (int x = 100; x < cols-100; ++x)
         {
-            uint8_t el = rowPtr[x];
-            if (!isLine && el)
+            bool isDark = rowPtr[x] || prevRowPtr[x] || nextRowPtr[x];
+            if (!isLine && isDark)
             {
                 start = x;
                 isLine =  true;
             }
-            else if (isLine && !el)
+            else if (isLine && !isDark)
             {
                 isLine = false;
                 if (x - start > minLineLength)
+                {
                     horizontalLines.push_back(Line(start, y, x, y));
+                    if (start < minX) minX = start;
+                    if (x > maxX) maxX = x;
+                }
             }
         }
         if (isLine && cols - 100 - start > minLineLength)
+        {
             horizontalLines.push_back(Line(start, y, cols-100, y));
+            if (start < minX) minX = start;
+            maxX = cols-100;
+        }
     }
     std::cout << "2:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
     // find all the vertical lines
     t0 = boost::chrono::high_resolution_clock::now();
     std::vector<Line> verticalLines;
-    dilatedImg = dilateHorizontal(img);
-    std::cout << "2.5:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
     std::vector<uint8_t> isLines(cols);
     std::vector<int> starts(cols);
     for (int y = 100; y < rows-100; ++y)
     {
-        const uint8_t *rowPtr = dilatedImg[y];
+        const uint8_t *rowPtr = img[y];
 
         for (int x = 100; x < cols-100; ++x)
         {
-            uint8_t el = rowPtr[x];
-            if (!isLines[x] && el)
+            bool isDark = rowPtr[x] || rowPtr[x-1] || rowPtr[x+1];
+            uint8_t& isLine = isLines[x];
+            int& start = starts[x];
+            if (!isLine && isDark)
             {
-                starts[x] = y;
-                isLines[x] = 1;
+                start = y;
+                isLine = 1;
             }
-            else if (isLines[x] && !el)
+            else if (isLine && !isDark)
             {
                 isLines[x] = 0;
-                if (y - starts[x] > minLineLength)
-                    verticalLines.push_back(Line(x, starts[x], x, y));
+                if (y - start > minLineLength)
+                {
+                    verticalLines.push_back(Line(x, start, x, y));
+                    if (start < minY) minY = start;
+                    if (y > maxY) maxY = y;
+                }
             }
         }
     }
     for (int x = 100; x < cols-100; ++x)
     {
         if (isLines[x] && rows - 100 - starts[x] > minLineLength)
+        {
             verticalLines.push_back(Line(x, starts[x], x, rows-100));
+            if (starts[x] < minY) minY = starts[x];
+            maxY = rows-100;
+        }
     }
     std::cout << "3:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
     t0 = boost::chrono::high_resolution_clock::now();
-    int minX = 99999;
-    int minY = 99999;
-    int maxX = 0;
-    int maxY = 0;
-    for (int i = 0; i < horizontalLines.size(); ++i)
-    {
-        minX = std::min(minX, horizontalLines[i].x1);
-        maxX = std::max(maxX, horizontalLines[i].x2);
-    }
-    for (int i = 0; i < verticalLines.size(); ++i)
-    {
-        minY = std::min(minY, verticalLines[i].y1);
-        maxY = std::max(maxY, verticalLines[i].y2);
-    }
-
     for (int i = 0; i < horizontalLines.size(); ++i)
     {
         horizontalLines[i].x1 -= minX;
@@ -304,7 +235,7 @@ void getFeatures(const std::string& filename, std::vector<int>& features)
     std::cout << "6:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
 
-    getchar();
+//    getchar();
 
 //    cv::namedWindow("foo");
 //    cv::imshow("foo", canvas2);
