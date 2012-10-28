@@ -1,13 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <queue>
 #include <algorithm>
 #include <string>
 #include <fstream>
 #include <stdexcept>
 
 #include <opencv2/opencv.hpp>
+#include <boost/chrono/chrono_io.hpp>
+
+#define WIDTH 2880
+#define HEIGHT 3520
 
 
 struct Line
@@ -22,92 +25,18 @@ struct Line
     int y2;
 };
 
-void drawLines(cv::Mat& canvas, const std::vector<Line> lines, unsigned char val=255)
-{
-    cv::Scalar color(val, val, val);
-    for (int i = 0; i < lines.size(); ++i)
-        cv::line(canvas,
-                 cv::Point(lines[i].x1, lines[i].y1),
-                 cv::Point(lines[i].x2, lines[i].y2),
-                 color);
-}
+typedef cv::Mat_<uint8_t> Image;
 
 
-
-void groupLines(cv::Mat& canvas, std::vector<Line>& results, bool isHorizontal)
-{
-    int rows = canvas.rows;
-    int cols = canvas.cols;
-
-    for (int y = 0; y < rows; ++y)
-    {
-        for (int x = 0; x < cols; ++x)
-        {
-            unsigned char el = canvas.at<unsigned char>(y, x);
-            if (!el) continue;
-
-            int minX = cols;
-            int maxX = 0;
-            int minY = rows;
-            int maxY = 0;
-            double averageY = 0.0;
-            double averageX = 0.0;
-            int numPoints = 0;
-
-            std::queue<cv::Point> fringe;
-            fringe.push(cv::Point(x, y));
-            canvas.at<unsigned char>(y, x) = 0;
-
-            while (fringe.size())
-            {
-                cv::Point pt = fringe.front();
-                fringe.pop();
-
-                minX = std::min(minX, pt.x);
-                maxX = std::max(maxX, pt.x);
-                minY = std::min(minY, pt.y);
-                maxY = std::max(maxY, pt.y);
-                averageX += pt.x;
-                averageY += pt.y;
-                numPoints++;
-
-                for (int dy = -2; dy <= 2; ++dy)
-                {
-                    for (int dx = -2; dx <= 2; ++dx)
-                    {
-                        int xx = pt.x + dx;
-                        int yy = pt.y + dy;
-                        if (xx < 0 || xx >= cols || yy < 0 || yy >= rows)
-                            continue;
-                        if (canvas.at<unsigned char>(yy, xx) == 0)
-                            continue;
-
-                        canvas.at<unsigned char>(yy, xx) = 0;
-                        fringe.push(cv::Point(xx, yy));
-                    }
-                }
-            }
-
-            averageY /= numPoints;
-            averageX /= numPoints;
-
-            if (isHorizontal)
-                results.push_back(Line(minX, averageY, maxX, averageY));
-            else
-                results.push_back(Line(averageX, minY, averageX, maxY));
-        }
-    }
-}
-
-void calculateDescriptor(cv::Mat& mat1, cv::Mat& mat2, std::vector<int>& results)
+void calculateDescriptor(Image& mat1, Image& mat2, std::vector<int>& results)
 {
     int rows = mat1.rows;
     int cols = mat1.cols;
     const int gridSize = 64;
 
-    for (int yy = 0; yy < 3520 - gridSize; yy += gridSize)
+    for (int yy = 0; yy < HEIGHT - gridSize; yy += gridSize)
     {
-        for (int xx = 0; xx < 2880 - gridSize; xx += gridSize)
+        for (int xx = 0; xx < WIDTH - gridSize; xx += gridSize)
         {
             int numHorizontalStart = 0;
             int numHorizontalEnd = 0;
@@ -120,9 +49,9 @@ void calculateDescriptor(cv::Mat& mat1, cv::Mat& mat2, std::vector<int>& results
                 if (yyy == 0) continue;
                 else if (yyy >= rows) break;
 
-                unsigned char *rowPtr1 = mat1.ptr<unsigned char>(yyy);
-                unsigned char *prevRowPtr1 = mat1.ptr<unsigned char>(yyy-1);
-                unsigned char *rowPtr2 = mat2.ptr<unsigned char>(yyy);
+                uint8_t *rowPtr1 = mat1[yyy];
+                uint8_t *prevRowPtr1 = mat1[yyy-1];
+                uint8_t *rowPtr2 = mat2[yyy];
                 for (int x = 0; x < gridSize; ++x)
                 {
                     int xxx = x + xx;
@@ -150,33 +79,33 @@ void calculateDescriptor(cv::Mat& mat1, cv::Mat& mat2, std::vector<int>& results
 }
 
 
-cv::Mat dilateVertical(cv::Mat& mat, unsigned char val = 255)
+Image dilateVertical(Image& mat, uint8_t val = 255)
 {
     int rows = mat.rows;
     int cols = mat.cols;
-    cv::Mat result = cv::Mat::zeros(rows, cols, CV_8UC1);
+    Image result = Image::zeros(rows, cols);
 
 
     for (int x = 0; x < cols; ++x)
     {
-        if (mat.at<unsigned char>(0, x))
+        if (mat(0, x))
         {
-            result.at<unsigned char>(0, x) = val;
-            result.at<unsigned char>(1, x) = val;
+            result(0, x) = val;
+            result(1, x) = val;
         }
-        if (mat.at<unsigned char>(rows-1, x))
+        if (mat(rows-1, x))
         {
-            result.at<unsigned char>(rows-1, x) = val;
-            result.at<unsigned char>(rows-2, x) = val;
+            result(rows-1, x) = val;
+            result(rows-2, x) = val;
         }
     }
 
     for (int y = 1; y < rows - 1; ++y)
     {
-        unsigned char *srcRowPtr = mat.ptr<unsigned char>(y);
-        unsigned char *destRowPtr = result.ptr<unsigned char>(y);
-        unsigned char *destPrevRowPtr = result.ptr<unsigned char>(y-1);
-        unsigned char *destNextRowPtr = result.ptr<unsigned char>(y+1);
+        uint8_t *srcRowPtr = mat[y];
+        uint8_t *destRowPtr = result[y];
+        uint8_t *destPrevRowPtr = result[y-1];
+        uint8_t *destNextRowPtr = result[y+1];
         for (int x = 0; x < cols; ++x)
         {
             if (srcRowPtr[x])
@@ -191,16 +120,16 @@ cv::Mat dilateVertical(cv::Mat& mat, unsigned char val = 255)
     return result;
 }
 
-cv::Mat dilateHorizontal(cv::Mat& mat, unsigned char val = 255)
+Image dilateHorizontal(Image& mat, uint8_t val = 255)
 {
     int rows = mat.rows;
     int cols = mat.cols;
-    cv::Mat result = cv::Mat::zeros(rows, cols, CV_8UC1);
+    Image result = Image::zeros(rows, cols);
 
     for (int y = 0; y < rows; ++y)
     {
-        unsigned char *srcRowPtr = mat.ptr<unsigned char>(y);
-        unsigned char *destRowPtr = result.ptr<unsigned char>(y);
+        uint8_t *srcRowPtr = mat[y];
+        uint8_t *destRowPtr = result[y];
         if (srcRowPtr[0])
         {
             destRowPtr[0] = val;
@@ -226,36 +155,39 @@ cv::Mat dilateHorizontal(cv::Mat& mat, unsigned char val = 255)
 }
 
 
-std::vector<int> getLines(const std::string& filename)
+void getFeatures(const std::string& filename, std::vector<int>& features)
 {
-    cv::Mat img = cv::imread(filename.c_str(), 0);
+    Image img = cv::imread(filename.c_str(), 0);
     if (!img.data)
         throw std::invalid_argument("file not found: " + filename);
 
     int rows = img.rows;
     int cols = img.cols;
+    int size = rows * cols;
     int minLineLength = std::min(rows, cols) * 0.035;
 
+    boost::chrono::high_resolution_clock::time_point t0;
+    boost::chrono::high_resolution_clock::time_point t1;
+
     // invert image
-    for (int y = 0; y < rows; ++y)
-    {
-        unsigned char *rowPtr = img.ptr<unsigned char>(y);
-        for (int x = 0; x < cols; ++x)
-            rowPtr[x] ^= 255;
-    }
+    t0 = boost::chrono::high_resolution_clock::now();
+    for (int i = 0; i < size; ++i)
+        img.data[i] ^= 255;
+    std::cout << "1:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
     // find all the horizontal lines
+    t0 = boost::chrono::high_resolution_clock::now();
     std::vector<Line> horizontalLines;
-    cv::Mat dilatedImg = dilateVertical(img);
+    Image dilatedImg = dilateVertical(img);
     for (int y = 100; y < rows-100; ++y)
     {
-        const unsigned char *rowPtr = dilatedImg.ptr<unsigned char>(y);
+        const uint8_t *rowPtr = dilatedImg[y];
 
         int start = 0;
         bool isLine = false;
         for (int x = 100; x < cols-100; ++x)
         {
-            unsigned char el = rowPtr[x];
+            uint8_t el = rowPtr[x];
             if (!isLine && el)
             {
                 start = x;
@@ -271,33 +203,43 @@ std::vector<int> getLines(const std::string& filename)
         if (isLine && cols - 100 - start > minLineLength)
             horizontalLines.push_back(Line(start, y, cols-100, y));
     }
+    std::cout << "2:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
     // find all the vertical lines
+    t0 = boost::chrono::high_resolution_clock::now();
     std::vector<Line> verticalLines;
     dilatedImg = dilateHorizontal(img);
-    for (int x = 100; x < cols-100; ++x)
+    std::cout << "2.5:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
+    std::vector<uint8_t> isLines(cols);
+    std::vector<int> starts(cols);
+    for (int y = 100; y < rows-100; ++y)
     {
-        int start = 0;
-        bool isLine = false;
-        for (int y = 100; y < rows-100; ++y)
+        const uint8_t *rowPtr = dilatedImg[y];
+
+        for (int x = 100; x < cols-100; ++x)
         {
-            unsigned char el = dilatedImg.at<unsigned char>(y, x);
-            if (!isLine && el)
+            uint8_t el = rowPtr[x];
+            if (!isLines[x] && el)
             {
-                start = y;
-                isLine =  true;
+                starts[x] = y;
+                isLines[x] = 1;
             }
-            else if (isLine && !el)
+            else if (isLines[x] && !el)
             {
-                isLine = false;
-                if (y - start > minLineLength)
-                    verticalLines.push_back(Line(x, start, x, y));
+                isLines[x] = 0;
+                if (y - starts[x] > minLineLength)
+                    verticalLines.push_back(Line(x, starts[x], x, y));
             }
         }
-        if (isLine && rows - 100 - start > minLineLength)
-            verticalLines.push_back(Line(x, start, x, rows-100));
     }
+    for (int x = 100; x < cols-100; ++x)
+    {
+        if (isLines[x] && rows - 100 - starts[x] > minLineLength)
+            verticalLines.push_back(Line(x, starts[x], x, rows-100));
+    }
+    std::cout << "3:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
+    t0 = boost::chrono::high_resolution_clock::now();
     int minX = 99999;
     int minY = 99999;
     int maxX = 0;
@@ -327,13 +269,14 @@ std::vector<int> getLines(const std::string& filename)
         verticalLines[i].y1 -= minY;
         verticalLines[i].y2 -= minY;
     }
+    std::cout << "4:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
     std::vector<Line> actualLines;
-    std::vector<int> descriptor;
 
     // draw the lines to empty canvases
-    cv::Mat canvas1 = cv::Mat::zeros(rows, cols, CV_8UC1);
-    cv::Mat canvas2 = cv::Mat::zeros(rows, cols, CV_8UC1);
+    t0 = boost::chrono::high_resolution_clock::now();
+    Image canvas1 = Image::zeros(rows, cols);
+    Image canvas2 = Image::zeros(rows, cols);
     cv::Scalar color(255, 255, 255);
     for (int i = 0; i < horizontalLines.size(); ++i)
     {
@@ -354,47 +297,18 @@ std::vector<int> getLines(const std::string& filename)
                      cv::Point(line.x2, line.y2),
                      color);
     }
+    std::cout << "5:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
-//    groupLines(canvas1, actualLines, true);
-//    groupLines(canvas2, actualLines, false);
+    t0 = boost::chrono::high_resolution_clock::now();
+    calculateDescriptor(canvas1, canvas2, features);
+    std::cout << "6:\t" << boost::chrono::high_resolution_clock::now() - t0 << '\n';
 
-    calculateDescriptor(canvas1, canvas2, descriptor);
 
-    // draw the vertical lines on an empty canvas and then group the pixels
-
-//    double ratio = 0.30;
-//    int resizedRows = (int)(rows * ratio);
-//    int resizedCols = (int)(cols * ratio);
-//    cv::Mat canvas2 = cv::Mat::zeros(resizedRows, resizedCols, CV_8UC1);
-
-//    for (int i = 0; i < actualLines.size(); ++i)
-//    {
-//        cv::line(canvas2,
-//                 cv::Point(actualLines[i].x1 * ratio, actualLines[i].y1 * ratio),
-//                 cv::Point(actualLines[i].x2 * ratio, actualLines[i].y2 * ratio),
-//                 cv::Scalar(255, 255, 255));
-//    }
-//    for (int i = 0; i < horizontalLines.size(); ++i)
-//    {
-//        cv::line(canvas2,
-//                 cv::Point(horizontalLines[i].x1, horizontalLines[i].y1),
-//                 cv::Point(horizontalLines[i].x2, horizontalLines[i].y2),
-//                 cv::Scalar(255, 255, 255));
-//    }
-//    for (int i = 0; i < verticalLines.size(); ++i)
-//    {
-//        cv::line(canvas2,
-//                 cv::Point(verticalLines[i].x1, verticalLines[i].y1),
-//                 cv::Point(verticalLines[i].x2, verticalLines[i].y2),
-//                 cv::Scalar(255, 255, 255));
-//    }
+    getchar();
 
 //    cv::namedWindow("foo");
 //    cv::imshow("foo", canvas2);
 //    cv::waitKey();
-
-    return descriptor;
-//    return actualLines;
 }
 
 
@@ -411,22 +325,15 @@ int main(int argc, char* argv[])
     {
         try
         {
-//            vector<Line> lines = getLines(srcFolder + imgFilename);
-//            cout << lines.size() << endl;
-//            linesFile << imgFilename << ' ' << lines.size() << '\n';
-//            for (int i = 0; i < lines.size(); ++i)
-//                linesFile << lines[i].x1 << ' ' << lines[i].y1 << ' ' << lines[i].x2 << ' ' << lines[i].y2 << '\n';
-
-            vector<int> descriptor = getLines(srcFolder + imgFilename);
-            cout << descriptor.size() << endl;
+            vector<int> features;
+            getFeatures(srcFolder + imgFilename, features);
             linesFile << imgFilename << " \n";
-            for (int i = 0; i < descriptor.size(); ++i)
-                linesFile << descriptor[i] << ' ';
+            for (int i = 0; i < features.size(); ++i)
+                linesFile << features[i] << ' ';
             linesFile << '\n';
         }
         catch (exception& e)
-        {
-        }
+        { }
     }
     
 
