@@ -8,20 +8,22 @@
 
 #include <opencv2/opencv.hpp>
 
-#define WIDTH 2880
-#define HEIGHT 3520
+int WIDTH;
+int HEIGHT;
+int gridSize;
+bool normalize;
 
 
 struct Line
 {
-    Line(int x1, int y1, int x2, int y2):
+    Line(double x1, double y1, double x2, double y2):
         x1(x1), y1(y1), x2(x2), y2(y2)
     {}
 
-    int x1;
-    int y1;
-    int x2;
-    int y2;
+    double x1;
+    double y1;
+    double x2;
+    double y2;
 };
 
 typedef cv::Mat_<uint8_t> Image;
@@ -31,7 +33,6 @@ void calculateDescriptor(Image& mat1, Image& mat2, std::vector<int>& results)
 {
     int rows = mat1.rows;
     int cols = mat1.cols;
-    const int gridSize = 64;
 
     for (int yy = 0; yy < HEIGHT - gridSize; yy += gridSize)
     {
@@ -78,20 +79,18 @@ void calculateDescriptor(Image& mat1, Image& mat2, std::vector<int>& results)
 }
 
 
-void getFeatures(const std::string& filename, std::vector<int>& features)
+void getFeatures(const std::string& filename, std::vector<int>& features, const std::string& imgFilename)
 {
     Image img = cv::imread(filename.c_str(), 0);
     if (!img.data)
         throw std::invalid_argument("file not found: " + filename);
 
+    cv::threshold(img, img, 0, 255, cv::THRESH_BINARY_INV | cv::THRESH_OTSU);
+
     int rows = img.rows;
     int cols = img.cols;
     int size = rows * cols;
     int minLineLength = std::min(rows, cols) * 0.035;
-
-    // invert image
-    for (int i = 0; i < size; ++i)
-        img.data[i] ^= 255;
 
     int minX = 99999;
     int minY = 99999;
@@ -175,19 +174,50 @@ void getFeatures(const std::string& filename, std::vector<int>& features)
         }
     }
 
-    for (int i = 0; i < horizontalLines.size(); ++i)
+    double horizontalRatio = (double)WIDTH / (maxX - minX);
+    double verticalRatio = (double)HEIGHT / (maxY - minY);
+
+    if (normalize)
     {
-        horizontalLines[i].x1 -= minX;
-        horizontalLines[i].x2 -= minX;
-        horizontalLines[i].y1 -= minY;
-        horizontalLines[i].y2 -= minY;
+        for (int i = 0; i < horizontalLines.size(); ++i)
+        {
+            horizontalLines[i].x1 -= minX;
+            horizontalLines[i].x2 -= minX;
+            horizontalLines[i].y1 -= minY;
+            horizontalLines[i].y2 -= minY;
+            horizontalLines[i].x1 *= horizontalRatio;
+            horizontalLines[i].x2 *= horizontalRatio;
+            horizontalLines[i].y1 *= verticalRatio;
+            horizontalLines[i].y2 *= verticalRatio;
+        }
+        for (int i = 0; i < verticalLines.size(); ++i)
+        {
+            verticalLines[i].x1 -= minX;
+            verticalLines[i].x2 -= minX;
+            verticalLines[i].y1 -= minY;
+            verticalLines[i].y2 -= minY;
+            verticalLines[i].x1 *= horizontalRatio;
+            verticalLines[i].x2 *= horizontalRatio;
+            verticalLines[i].y1 *= verticalRatio;
+            verticalLines[i].y2 *= verticalRatio;
+        }
     }
-    for (int i = 0; i < verticalLines.size(); ++i)
+    else
     {
-        verticalLines[i].x1 -= minX;
-        verticalLines[i].x2 -= minX;
-        verticalLines[i].y1 -= minY;
-        verticalLines[i].y2 -= minY;
+        for (int i = 0; i < horizontalLines.size(); ++i)
+        {
+            horizontalLines[i].x1 -= minX;
+            horizontalLines[i].x2 -= minX;
+            horizontalLines[i].y1 -= minY;
+            horizontalLines[i].y2 -= minY;
+        }
+        for (int i = 0; i < verticalLines.size(); ++i)
+        {
+            verticalLines[i].x1 -= minX;
+            verticalLines[i].x2 -= minX;
+            verticalLines[i].y1 -= minY;
+            verticalLines[i].y2 -= minY;
+        }
     }
 
     std::vector<Line> actualLines;
@@ -201,8 +231,8 @@ void getFeatures(const std::string& filename, std::vector<int>& features)
         const Line& line = horizontalLines[i];
         if (line.y2 <= maxY)
             cv::line(canvas1,
-                     cv::Point(line.x1, line.y1),
-                     cv::Point(line.x2, line.y2),
+                     cv::Point((int)line.x1, (int)line.y1),
+                     cv::Point((int)line.x2, (int)line.y2),
                      color);
     }
 
@@ -211,10 +241,12 @@ void getFeatures(const std::string& filename, std::vector<int>& features)
         const Line& line = verticalLines[i];
         if (line.x2 <= maxX)
             cv::line(canvas2,
-                     cv::Point(line.x1, line.y1),
-                     cv::Point(line.x2, line.y2),
+                     cv::Point((int)line.x1, (int)line.y1),
+                     cv::Point((int)line.x2, (int)line.y2),
                      color);
     }
+
+//    cv::imwrite("/Users/huipeng/Desktop/bw/" + imgFilename, canvas1);
 
     calculateDescriptor(canvas1, canvas2, features);
 
@@ -222,7 +254,7 @@ void getFeatures(const std::string& filename, std::vector<int>& features)
 //    getchar();
 
 //    cv::namedWindow("foo");
-//    cv::imshow("foo", canvas1);
+//    cv::imshow("foo", img);
 //    cv::waitKey();
 }
 
@@ -230,27 +262,23 @@ void getFeatures(const std::string& filename, std::vector<int>& features)
 int main(int argc, char* argv[])
 {
     using namespace std;
-
-    string srcFolder = "/Users/huipeng/EO990RW8/";
-
-    ifstream firstPagesFile("/Users/huipeng/EO990RW8/first_pages.txt", ifstream::in);
-    ofstream linesFile("/Users/huipeng/EO990RW8/lines_extract.txt", ostream::out);
-    string imgFilename;
-    while (getline(firstPagesFile, imgFilename))
-    {
-        try
-        {
-            vector<int> features;
-            getFeatures(srcFolder + imgFilename, features);
-            linesFile << imgFilename << " \n";
-            for (int i = 0; i < features.size(); ++i)
-                linesFile << features[i] << ' ';
-            linesFile << '\n';
-        }
-        catch (exception& e)
-        { }
-    }
     
+    // read parameters
+    if (argc != 6)
+        return 0;
+    string imgFilename = argv[1];
+    HEIGHT = atoi(argv[2]);
+    WIDTH = atoi(argv[3]);
+    gridSize = atoi(argv[4]);
+    normalize = atoi(argv[5]);
 
+    fprintf(stderr, "%d, %d, %d, %d\n", HEIGHT, HEIGHT, gridSize, normalize);
+
+    // calculate and print features
+    vector<int> features;
+    getFeatures(imgFilename, features, imgFilename);
+    for (int i = 0; i < features.size()/2; ++i)
+        cout << features[i] << ' ';
+    
     return 0;
 }

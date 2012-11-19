@@ -2,3 +2,9 @@
 *.dblite
 *.o
 lines
+.DS_Store
+*.pyc
+*.pkl
+groups
+unlabeled
+labeled
