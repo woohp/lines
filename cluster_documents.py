@@ -29,16 +29,17 @@ def cluster_documents(
         pca_n_components=100,
         output_path=None):
 
-    global features_cache
-    try:
-        with open('features.pkl', 'r') as f:
-            features_cache = pickle.load(f)
-    except:
-        features_cache = {}
 
     key = (canvas_size, grid_size)
     if key not in features_cache:
         features_cache[key] = {}
+
+    # initialize the features extractor program pipe
+    features_extractor_filepath = os.path.join(os.getcwd(), 'lines')
+    height, width = canvas_size
+    features_extractor = subprocess.Popen(
+            [features_extractor_filepath, str(height), str(width), str(grid_size), str(int(normalize_image))],
+            stdout=subprocess.PIPE, stdin=subprocess.PIPE)
 
     # calculate the features
     filenames = []
@@ -48,12 +49,8 @@ def cluster_documents(
         filenames.append(filename)
 
         if filename not in features_cache[key]:
-            height, width = canvas_size
-            lines_filepath = os.path.join(os.getcwd(), 'lines')
-            pipe = subprocess.Popen(
-                    [lines_filepath, filepath, str(height), str(width), str(grid_size), str(int(normalize_image))],
-                    stdout=subprocess.PIPE)
-            out, err = pipe.communicate()
+            print >> features_extractor.stdin, filepath
+            out = features_extractor.stdout.readline()
             features_cache[key][filename] = np.fromstring(out.strip(), dtype=int, sep=' ')
 
         X.append(features_cache[key][filename])
@@ -141,7 +138,15 @@ def cluster_documents(
 
 
 def main(argv):
-    filepaths = glob.glob(os.path.join(os.getcwd(), 'unlabeled', '*'))
+    # initialize the features cache
+    global features_cache
+    try:
+        with open('features.pkl', 'r') as f:
+            features_cache = pickle.load(f)
+    except:
+        features_cache = {}
+
+    filepaths = glob.iglob(os.path.join(os.getcwd(), 'unlabeled', '*'))
     cluster_documents(filepaths, output_path=os.path.join(os.getcwd(), 'groups'))
 
 

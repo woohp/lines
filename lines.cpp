@@ -264,21 +264,23 @@ int main(int argc, char* argv[])
     using namespace std;
     
     // read parameters
-    if (argc != 6)
+    if (argc != 5)
         return 0;
-    string imgFilename = argv[1];
-    HEIGHT = atoi(argv[2]);
-    WIDTH = atoi(argv[3]);
-    gridSize = atoi(argv[4]);
-    normalize = atoi(argv[5]);
-
-    fprintf(stderr, "%d, %d, %d, %d\n", HEIGHT, HEIGHT, gridSize, normalize);
+    HEIGHT = atoi(argv[1]);
+    WIDTH = atoi(argv[2]);
+    gridSize = atoi(argv[3]);
+    normalize = atoi(argv[4]);
 
     // calculate and print features
-    vector<int> features;
-    getFeatures(imgFilename, features, imgFilename);
-    for (int i = 0; i < features.size()/2; ++i)
-        cout << features[i] << ' ';
-    
+    string imgFilename;
+    while (getline(cin, imgFilename))
+    {
+        vector<int> features;
+        getFeatures(imgFilename, features, imgFilename);
+        for (int i = 0; i < features.size()/2; ++i)
+            cout << features[i] << ' ';
+        cout << '\n';
+    }
+
     return 0;
 }
